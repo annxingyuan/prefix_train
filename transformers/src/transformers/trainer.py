@@ -240,7 +240,6 @@ class Trainer:
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.tokenizer = tokenizer
-        self.curr_best_eval = 10000000
         self.model_init = model_init
         self.compute_metrics = compute_metrics
         self.optimizer, self.lr_scheduler = optimizers
@@ -432,46 +431,22 @@ class Trainer:
         """
         if self.optimizer is None:
             no_decay = ["bias", "LayerNorm.weight"]
-            # DEBUG
-            # optimizer_grouped_parameters = [
-            #     {
-            #         "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
-            #         "weight_decay": self.args.weight_decay,
-            #     },
-            #     {
-            #         "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
-            #         "weight_decay": 0.0,
-            #     },
-            # ]
-            # self.optimizer = AdamW(
-            #     optimizer_grouped_parameters,
-            #     lr=self.args.learning_rate,
-            #     betas=(self.args.adam_beta1, self.args.adam_beta2),
-            #     eps=self.args.adam_epsilon,
-            # )
-
             optimizer_grouped_parameters = [
             {
-                "params": [p for n, p in self.model.named_parameters() if (not any(nd in n for nd in no_decay)) and p.requires_grad],
+                    "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
                 "weight_decay": self.args.weight_decay,
             },
             {
-                "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay) and p.requires_grad],
+                    "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
                 "weight_decay": 0.0,
             },
             ]
-
             self.optimizer = AdamW(
                 optimizer_grouped_parameters,
                 lr=self.args.learning_rate,
                 betas=(self.args.adam_beta1, self.args.adam_beta2),
                 eps=self.args.adam_epsilon,
             )
-
-
-            # for n, p in self.model.named_parameters():
-            #     print(n,p.requires_grad)
-            print(self.optimizer.state_dict())
         if self.lr_scheduler is None:
             self.lr_scheduler = get_linear_schedule_with_warmup(
                 self.optimizer, num_warmup_steps=self.args.warmup_steps, num_training_steps=num_training_steps
@@ -720,10 +695,6 @@ class Trainer:
             # set global_step to global_step of last saved checkpoint from model path
             try:
                 self.global_step = int(model_path.split("-")[-1].split(os.path.sep)[0])
-                # print(model, model.module)
-                if self.args.n_gpu > 1:
-                    self.total_flos = getattr(model.module.config, "total_flos", 0)
-                else:
                     self.total_flos = getattr(model.config, "total_flos", 0)
 
                 epochs_trained = self.global_step // num_update_steps_per_epoch
@@ -770,14 +741,6 @@ class Trainer:
                     continue
 
                 tr_loss += self.training_step(model, inputs)
-
-                # print()
-                # # DEBUG
-                # for param in list(model.parameters())[-5:]:
-                #     print(param.requires_grad, end='')
-                #     print(param.mean(), end=' ')
-                # print()
-
                 self.total_flos += self.floating_point_ops(inputs)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
@@ -829,42 +792,6 @@ class Trainer:
                         metrics = self.evaluate()
                         self._report_to_hp_search(trial, epoch, metrics)
 
-                        # URGENT, this is just for the low data setting, False otherwise.
-                        #####################################################
-                        if 'lowdata' in self.args.output_dir or 'large' in self.args.output_dir or 'earlystop' in self.args.output_dir:
-                            self.save_based_on_eval = True
-                        else:
-                            self.save_based_on_eval = False
-                        print('lowdata:', self.global_step, self.curr_best_eval, metrics["eval_loss"],self.save_based_on_eval,
-                              'perplexity={}'.format(math.exp(metrics["eval_loss"])))
-                        if self.save_based_on_eval and metrics["eval_loss"] < self.curr_best_eval:
-                            self.curr_best_eval = metrics["eval_loss"]
-                            if hasattr(model, "module"):
-                                assert (
-                                        model.module is self.model
-                                ), f"Module {model.module} should be a reference to self.model"
-                            else:
-                                assert model is self.model, f"Model {model} should be a reference to self.model"
-                            # Save model checkpoint
-                            output_dir_name = os.path.basename(self.args.output_dir)
-                            checkpoint_folder = f"{output_dir_name}-{PREFIX_CHECKPOINT_DIR}-{self.global_step}"
-                            if self.hp_search_backend is not None and trial is not None:
-                                run_id = (
-                                    trial.number
-                                    if self.hp_search_backend == HPSearchBackend.OPTUNA
-                                    else tune.get_trial_id()
-                                )
-                                checkpoint_folder += f"-run-{run_id}"
-                            output_dir = os.path.join(self.args.output_dir, checkpoint_folder)
-
-                            self.store_flos()
-                            print('saving to output_dir', output_dir)
-                            self.save_model(output_dir)
-
-                            if self.is_world_process_zero():
-                                self._rotate_checkpoints(use_mtime=True)
-                        #####################################################
-
                     if self.args.save_steps > 0 and self.global_step % self.args.save_steps == 0:
                         # In all cases (even distributed/parallel), self.model is always a reference
                         # to the model we want to save.
@@ -886,7 +813,6 @@ class Trainer:
                         output_dir = os.path.join(self.args.output_dir, checkpoint_folder)
 
                         self.store_flos()
-
                         self.save_model(output_dir)
 
                         if self.is_world_process_zero():
@@ -1136,7 +1062,6 @@ class Trainer:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
-            # print(loss)
             loss.backward()
 
         return loss.detach()
@@ -1147,13 +1072,10 @@ class Trainer:
 
         Subclass and override for custom behavior.
         """
-        # outputs = model.forward_weighted(**inputs)
         outputs = model(**inputs)
         # Save past state if it exists
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
-
-        # print(outputs[0])
         # We don't use .loss here since the model may return tuples instead of ModelOutput.
         return outputs[0]
 
@@ -1263,10 +1185,6 @@ class Trainer:
                 self.model.config.total_flos = total_flos
 
     def _sorted_checkpoints(self, checkpoint_prefix=PREFIX_CHECKPOINT_DIR, use_mtime=False) -> List[str]:
-        # URGENT:
-        output_dir_name = os.path.basename(self.args.output_dir)
-        checkpoint_prefix = f"{output_dir_name}-{PREFIX_CHECKPOINT_DIR}"
-
         ordering_and_checkpoint_path = []
 
         glob_checkpoints = [str(x) for x in Path(self.args.output_dir).glob(f"{checkpoint_prefix}-*")]
@@ -1485,16 +1403,7 @@ class Trainer:
         has_labels = all(inputs.get(k) is not None for k in self.args.label_names)
         inputs = self._prepare_inputs(inputs)
 
-        # At eval time, set the weights to 1/bsz. and see the results..
-
-        if 'weights' in inputs:
-            weights = inputs['weights']
-            bsz = weights.view(-1).shape[0]
-            weights = (torch.ones(weights.shape)/bsz).to(weights.device)
-            inputs['weights'] = weights
-
         with torch.no_grad():
-            # outputs = model.forward_weighted(**inputs)
             outputs = model(**inputs)
             if has_labels:
                 # The .mean() is to reduce in case of distributed training

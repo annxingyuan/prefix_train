@@ -40,15 +40,6 @@ class GenerationMixin:
         """
         return {"input_ids": input_ids}
 
-    def prepare_inputs_for_generation2(self, input_ids, **kwargs):
-        """
-        Implement in subclasses of :class:`~transfomers.PreTrainedModel` for custom behavior to prepare inputs in the
-        generate method.
-        """
-        # print(kwargs)
-        return {"input_ids": input_ids, 'emb_match':kwargs['emb_match'],
-                'control_code':kwargs['control_code'], 'past_key_values':kwargs['past_key_values']}
-
     def adjust_logits_during_generation(self, logits, **kwargs):
         """
         Implement in subclasses of :class:`~transfomers.PreTrainedModel` for custom behavior to adjust the logits in
@@ -111,7 +102,6 @@ class GenerationMixin:
             bad_words_ids = list(filter(lambda bad_token_seq: bad_token_seq != [eos_token_id], bad_words_ids))
             # calculate a list of banned tokens according to bad words
             banned_tokens = calc_banned_bad_words_ids(input_ids.tolist(), bad_words_ids)
-            # print(bad_words_ids, banned_tokens)
             # Modify the scores in place by setting the banned tokens logits to `-inf`
             set_scores_to_inf_for_banned_tokens(scores, banned_tokens)
 
@@ -409,43 +399,22 @@ class GenerationMixin:
 
             # get encoder and store encoder outputs
             encoder = self.get_encoder()
-            # LISA CHANGED HERE
-            temp_past_key_values = model_kwargs['past_key_values'] if 'past_key_values' in model_kwargs else None
-            encoder_outputs: ModelOutput = encoder(input_ids, attention_mask=attention_mask,
-                                                   past_key_values=temp_past_key_values, return_dict=True)
-            # print(temp_past_key_values[0].keys())
-            # # LISA remove the encoder part.
-            # if 'encoder' in temp_past_key_values[0].keys():
-            #     for i in range(len(temp_past_key_values)):
-            #         del temp_past_key_values[i]['encoder']
-
+            encoder_outputs: ModelOutput = encoder(input_ids, attention_mask=attention_mask, return_dict=True)
 
         # Expand input ids if num_beams > 1 or num_return_sequences > 1
         if num_return_sequences > 1 or num_beams > 1:
             input_ids_len = input_ids.shape[-1]
             input_ids = input_ids.unsqueeze(1).expand(batch_size, effective_batch_mult * num_beams, input_ids_len)
-            #URGENT
-            attn_len = attention_mask.shape[-1]
             attention_mask = attention_mask.unsqueeze(1).expand(
-                batch_size, effective_batch_mult * num_beams, attn_len
+                batch_size, effective_batch_mult * num_beams, input_ids_len
             )
-
-            # attention_mask = attention_mask.unsqueeze(1).expand(
-            #     batch_size, effective_batch_mult * num_beams, input_ids_len
-            # )
 
             input_ids = input_ids.contiguous().view(
                 effective_batch_size * num_beams, input_ids_len
             )  # shape: (batch_size * num_return_sequences * num_beams, cur_len)
-
-            #URGENT
             attention_mask = attention_mask.contiguous().view(
-                effective_batch_size * num_beams, attn_len
+                effective_batch_size * num_beams, input_ids_len
             )  # shape: (batch_size * num_return_sequences * num_beams, cur_len)
-
-            # attention_mask = attention_mask.contiguous().view(
-            #     effective_batch_size * num_beams, input_ids_len
-            # )  # shape: (batch_size * num_return_sequences * num_beams, cur_len)
 
         if self.config.is_encoder_decoder:
             # create empty decoder input_ids
@@ -561,19 +530,7 @@ class GenerationMixin:
         sent_lengths = input_ids.new(batch_size).fill_(max_length)
 
         past = None
-        # print('line 533')
         while cur_len < max_length:
-
-            # print(past)
-            # if past is not None:
-            #     print(past[0].shape, len(past))
-            # else:
-            #     print(past)
-
-            # model_inputs = self.prepare_inputs_for_generation2(
-            #     input_ids, past=past, attention_mask=attention_mask, use_cache=use_cache, **model_kwargs
-            # )
-
             model_inputs = self.prepare_inputs_for_generation(
                 input_ids, past=past, attention_mask=attention_mask, use_cache=use_cache, **model_kwargs
             )
@@ -600,7 +557,6 @@ class GenerationMixin:
                 past = outputs.past_key_values
             elif "mems" in outputs:
                 past = outputs.mems
-
 
             if do_sample:
                 # Temperature (higher temperature => more likely to sample low probability tokens)

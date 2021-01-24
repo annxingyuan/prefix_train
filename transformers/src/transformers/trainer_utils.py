@@ -25,12 +25,8 @@ def set_seed(seed: int):
         import torch
 
         torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         # ^^ safe to call this function even if cuda is not available
-        torch.backends.cudnn.benchmark=False
-        # torch.set_deterministic(True)
-        torch.backends.cudnn.deterministic=True
     if is_tf_available():
         import tensorflow as tf
 
