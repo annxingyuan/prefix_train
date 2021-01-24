@@ -225,17 +225,6 @@ if is_torch_available():
         DataCollatorForSOP,
         DataCollatorWithPadding,
         default_data_collator,
-        DataCollatorForWeightedLanguageModeling,
-        DataCollatorForEmbMatchLanguageModeling,
-        DataCollatorForTopicLanguageModeling,
-        DataCollatorForLengthLanguageModeling,
-        DataCollatorForKeywordLanguageModeling,
-        DataCollatorForData2TextLanguageModeling,
-        DataCollatorForText2DataLanguageModeling,
-        DataCollatorForWritingPromptsLanguageModeling,
-        DataCollatorForSumLanguageModeling,
-        DataCollatorForSumBatchGenLanguageModeling,
-        DataCollatorForClassificationSentimentLanguageModeling,
     )
     from .data.datasets import (
         GlueDataset,
@@ -246,22 +235,6 @@ if is_torch_available():
         SquadDataTrainingArguments,
         TextDataset,
         TextDatasetForNextSentencePrediction,
-        LineByLineWithWeightTextDataset,
-        LineByLineEmbMatchTextDataset,
-        LineByLineTopicTextDataset,
-        LineByLineLengthTextDataset,
-        LineByLineKeywordTextDataset,
-        LineByLineData2TextTextDataset,
-        LineByLineLemma2TextTextDataset,
-        LineByLineText2DataTextDataset,
-        LineByLineTriplesTextDataset,
-        LineByLineWebNLGTextDataset,
-        LineByLineWritingPromptsTextDataset,
-        LineByLineSumTextDataset,
-        LineByLineSumBatchGenTextDataset,
-        LineByLineSentimentTextDataset,
-        LineByLineClassificationSentimentTextDataset,
-        LineByLineClassificationTopicTextDataset,
     )
     from .generation_utils import top_k_top_p_filtering
     from .modeling_albert import (
@@ -398,9 +371,6 @@ if is_torch_available():
         GPT2Model,
         GPT2PreTrainedModel,
         load_tf_weights_in_gpt2,
-    )
-    from .modeling_gpt2_adapter import (
-        GPT2LMHeadModelAdapter,
     )
     from .modeling_layoutlm import (
         LAYOUTLM_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -540,9 +510,6 @@ if is_torch_available():
 
     # Trainer
     from .trainer import EvalPrediction, Trainer, set_seed, torch_distributed_zero_first
-
-    # Trainer_Prefix
-    from .trainer_prefix import Trainer_Prefix
 
 # TensorFlow
 if is_tf_available():
